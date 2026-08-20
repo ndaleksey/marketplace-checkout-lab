@@ -3,6 +3,13 @@ package com.nd.checkout.inventory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -55,7 +62,47 @@ class UnsafeInventoryServiceTest {
     }
 
     @Test
-    void shouldDemonstrateOversellingUnderConcurrentReservations()
-            throws InterruptedException {
+    void shouldPreserveInventoryInvariantUnderConcurrentReservations()
+            throws InterruptedException, ExecutionException {
+        var threads = 10;
+        var initStock = 100;
+        var reservationQuantity = 20;
+        var productId = "product";
+        var successfulReservations = new AtomicInteger();
+
+        unsafeInventoryService.addStock(productId, initStock);
+
+        var ready = new CountDownLatch(threads);
+        var start = new CountDownLatch(1);
+
+        try(var executor = Executors.newFixedThreadPool(threads)) {
+            var futures = new ArrayList<Future<?>>();
+
+            for (int i = 0; i < threads; i++) {
+                futures.add(executor.submit(() -> {
+                    ready.countDown();
+                    start.await();
+
+                    if (unsafeInventoryService.reserve(productId, reservationQuantity)) {
+                        successfulReservations.incrementAndGet();
+                    }
+
+                    return null;
+                }));
+            }
+
+            ready.await();
+            start.countDown();
+
+            for (var future : futures) {
+                future.get();
+            }
+
+            var available = unsafeInventoryService.available(productId);
+            var reserved = successfulReservations.get() * reservationQuantity;
+
+            assertEquals(initStock, available + reserved);
+        }
+
     }
 }
