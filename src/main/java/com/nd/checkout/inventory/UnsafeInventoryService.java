@@ -10,12 +10,27 @@ public class UnsafeInventoryService implements InventoryService {
 
     @Override
     public void addStock(String productId, int quantity) {
-        inventory.put(productId, quantity);
+        var stockQuantity = inventory.getOrDefault(productId, 0);
+        stockQuantity += quantity;
+        inventory.put(productId, stockQuantity);
     }
 
     @Override
     public boolean reserve(String productId, int quantity) {
-        return inventory.containsKey(productId);
+        if (!inventory.containsKey(productId)) {
+            return false;
+        }
+
+        var availableQuantity = inventory.get(productId);
+
+        if (availableQuantity < quantity) {
+            return false;
+        } else {
+            availableQuantity -= quantity;
+            inventory.put(productId, availableQuantity);
+        }
+
+        return true;
     }
 
     @Override
